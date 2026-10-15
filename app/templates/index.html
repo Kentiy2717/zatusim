@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="text-center py-16">
+    <h1 class="text-5xl font-extrabold mb-4 text-indigo-400">Затусим?</h1>
+    <p class="text-xl text-slate-300 max-w-2xl mx-auto mb-8">
+        Платформа для крутых вечеринок, настолок, игры «Правда или Действие» и общения с друзьями.
+    </p>
+    <div class="flex justify-center gap-4">
+        <a href="/games" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition">
+            Начать игру
+        </a>
+    </div>
+</div>
+{% endblock %}
