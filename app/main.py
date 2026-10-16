@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.modules.users.router import router as users_router
+
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(
@@ -16,6 +18,9 @@ app = FastAPI(
 # Подключение статики и шаблонов
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE_DIR / 'templates')
+
+# Подключение роутеров модулей
+app.include_router(users_router, prefix='/api/v1/users', tags=['Users'])
 
 
 @app.get('/healthcheck', tags=['Health'])
