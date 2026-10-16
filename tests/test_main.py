@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 client = TestClient(app)
@@ -7,9 +8,13 @@ client = TestClient(app)
 
 def test_healthcheck() -> None:
     """Проверка JSON-эндпоинта статуса системы."""
+
     response = client.get('/healthcheck')
     assert response.status_code == 200
-    assert response.json() == {'status': 'ok', 'project': 'Zatusim'}
+    assert response.json() == {
+        'status': 'ok',
+        'project_name': settings.PROJECT_NAME,
+    }
 
 
 def test_index_page() -> None:

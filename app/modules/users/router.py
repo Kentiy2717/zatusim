@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentUser, DbSession
 from app.modules.users.schemas import UserCreate, UserRead
 from app.modules.users.service import create_user, get_user_by_email
 
@@ -30,3 +30,14 @@ async def register_user(
 
     new_user = await create_user(session, user_in)
     return new_user
+
+
+@router.get(
+    '/me',
+    response_model=UserRead,
+    summary='Получение профиля текущего авторизованного пользователя',
+)
+async def get_me(current_user: CurrentUser) -> UserRead:
+    """Возвращает данные текущего авторизованного пользователя."""
+
+    return current_user
