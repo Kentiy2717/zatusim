@@ -12,6 +12,10 @@ from app.modules.users.router import router as users_router
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Создаем папку для загрузок, если ее нет.
+uploads_dir = Path('uploads')
+uploads_dir.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(
     title=f'{settings.PROJECT_NAME} API',
     description='Социальный лаунчер для живых тусовок и игр',
@@ -22,19 +26,20 @@ app = FastAPI(
 # Разрешаем фронтенду (React Native/Web) обращаться к нашему API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],  # На продакшене укажи точный домен!
+    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=['*'],  # Разрешаем все методы (GET, POST, OPTIONS, PUT, DELETE)
     allow_headers=['*'],  # Разрешаем все заголовки (включая Authorization: Bearer)
 )
 
 # Подключение статики и шаблонов
+app.mount('/uploads', StaticFiles(directory='uploads'), name='uploads')
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE_DIR / 'templates')
 
 # Подключение API роутеров модулей
-app.include_router(users_router, prefix='/api/v1/users', tags=['Users'])
-app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
+app.include_router(users_router, prefix='/api/v1')
+app.include_router(auth_router, prefix='/api/v1')
 
 
 @app.get('/healthcheck', tags=['Health'])

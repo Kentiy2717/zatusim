@@ -24,6 +24,8 @@ def test_register_user_success(client: TestClient) -> None:
     user_data = {
         'email': 'test_user@example.com',
         'password': 'strongpassword123',
+        'password_confirm': 'strongpassword123',
+        'username': 'test_user_ivan',
         'first_name': 'Иван',
         'last_name': 'Иванович',
         'gender': 'M',
@@ -31,7 +33,7 @@ def test_register_user_success(client: TestClient) -> None:
     }
 
     try:
-        response = client.post('/api/v1/users/register', json=user_data)
+        response = client.post('/api/v1/auth/register', json=user_data)
 
         assert response.status_code == 201
         data = response.json()
@@ -50,19 +52,21 @@ def test_register_user_duplicate_email(client: TestClient) -> None:
     user_data = {
         'email': 'duplicate@example.com',
         'password': 'password123',
+        'password_confirm': 'password123',
+        'username': 'duplicate_user_test',
         'first_name': 'Иван',
         'gender': 'M',
         'preference': 'F',
     }
 
     try:
-        first_response = client.post('/api/v1/users/register', json=user_data)
+        first_response = client.post('/api/v1/auth/register', json=user_data)
         assert first_response.status_code == 201
 
-        second_response = client.post('/api/v1/users/register', json=user_data)
+        second_response = client.post('/api/v1/auth/register', json=user_data)
         assert second_response.status_code == 400
         assert second_response.json()['detail'] == (
-            'Пользователь с таким email уже зарегистрирован.'
+            'Пользователь с таким email уже существует'
         )
     finally:
         delete_user_by_email(user_data['email'])

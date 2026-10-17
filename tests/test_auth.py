@@ -9,6 +9,8 @@ def test_login_success(client: TestClient) -> None:
     user_data = {
         'email': 'auth_user@example.com',
         'password': 'password123',
+        'password_confirm': 'password123',
+        'username': 'auth_user_test',
         'first_name': 'Петр',
         'gender': 'M',
         'preference': 'F',
@@ -16,7 +18,7 @@ def test_login_success(client: TestClient) -> None:
 
     try:
         # 1. Регистрируем пользователя
-        reg_resp = client.post('/api/v1/users/register', json=user_data)
+        reg_resp = client.post('/api/v1/auth/register', json=user_data)
         assert reg_resp.status_code == 201
 
         # 2. Выполняем вход
@@ -40,13 +42,15 @@ def test_login_invalid_credentials(client: TestClient) -> None:
     user_data = {
         'email': 'auth_wrong_pwd@example.com',
         'password': 'correct_password',
+        'password_confirm': 'correct_password',
+        'username': 'auth_wrong_pwd_test',
         'first_name': 'Петр',
         'gender': 'M',
         'preference': 'F',
     }
 
     try:
-        client.post('/api/v1/users/register', json=user_data)
+        client.post('/api/v1/auth/register', json=user_data)
 
         # Пробуем войти с неверным паролем
         login_data = {
@@ -66,6 +70,8 @@ def test_get_me_success(client: TestClient) -> None:
     user_data = {
         'email': 'get_me_user@example.com',
         'password': 'password123',
+        'password_confirm': 'password123',
+        'username': 'get_me_user_test',
         'first_name': 'Алексей',
         'gender': 'M',
         'preference': 'F',
@@ -73,7 +79,7 @@ def test_get_me_success(client: TestClient) -> None:
 
     try:
         # 1. Регистрируем
-        client.post('/api/v1/users/register', json=user_data)
+        client.post('/api/v1/auth/register', json=user_data)
 
         # 2. Логинимся и забираем токен
         login_resp = client.post(

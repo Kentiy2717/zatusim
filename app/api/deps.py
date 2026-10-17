@@ -8,7 +8,7 @@ from app.core.security import decode_access_token
 from app.db.session import get_db_session
 from app.modules.users.exceptions import UserInactiveError
 from app.modules.users.models import User
-from app.modules.users.service import check_user_active, get_user_by_id
+from app.modules.users.service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/api/v1/auth/login')
 
@@ -40,12 +40,12 @@ async def get_current_user(
     except ValueError:
         raise credentials_exception
 
-    user = await get_user_by_id(session, user_id)
+    user = await UserService.get_by_id(session, user_id)
     if user is None:
         raise credentials_exception
 
     try:
-        return check_user_active(user)
+        return UserService.check_active(user)
     except UserInactiveError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

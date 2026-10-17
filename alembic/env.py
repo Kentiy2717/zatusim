@@ -19,6 +19,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Offline режим (генерация SQL без подключения к БД)."""
+
     url = settings.database_url
     context.configure(
         url=url,
@@ -43,6 +44,7 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Online режим с асинхронным подключением."""
+
     configuration = config.get_section(config.config_ini_section, {})
     configuration['sqlalchemy.url'] = settings.database_url
 

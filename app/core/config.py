@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,10 +16,18 @@ class Settings(BaseSettings):
     REDIS_HOST: str = 'localhost'
     REDIS_PORT: int = 6379
 
+    BACKEND_CORS_ORIGINS: list[str] | str = [
+        'http://localhost:8081',
+        'http://localhost:8004',
+        'http://127.0.0.1:8081',
+        'http://127.0.0.1:8004',
+    ]
+
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8',
         extra='ignore',
+        case_sensitive=True,
     )
 
     @property
@@ -27,6 +36,15 @@ class Settings(BaseSettings):
             f'postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}'
             f'@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}'
         )
+
+    @field_validator('BACKEND_CORS_ORIGINS', mode='before')
+    @classmethod
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str) and not v.startswith('['):
+            return [i.strip() for i in v.split(',')]
+        elif isinstance(v, (list, str)):
+            return v
+        raise ValueError(v)
 
 
 settings = Settings()
