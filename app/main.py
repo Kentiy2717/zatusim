@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +16,16 @@ app = FastAPI(
     title=f'{settings.PROJECT_NAME} API',
     description='Социальный лаунчер для живых тусовок и игр',
     version='0.1.0',
+)
+
+# Настройка CORS (Cross-Origin Resource Sharing)
+# Разрешаем фронтенду (React Native/Web) обращаться к нашему API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],  # На продакшене укажи точный домен!
+    allow_credentials=True,
+    allow_methods=['*'],  # Разрешаем все методы (GET, POST, OPTIONS, PUT, DELETE)
+    allow_headers=['*'],  # Разрешаем все заголовки (включая Authorization: Bearer)
 )
 
 # Подключение статики и шаблонов
