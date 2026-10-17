@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  zatusim_db:
+    image: postgres:15-alpine
+    container_name: zatusim_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-zatusim_db}
+    volumes:
+      - zatusim_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-zatusim_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  zatusim_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zatusim_backend
+    restart: always
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      POSTGRES_SERVER: zatusim_db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-zatusim_db}
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      zatusim_db:
+        condition: service_healthy
+
+  zatusim_frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zatusim_frontend
+    restart: always
+    ports:
+      - "127.0.0.1:8002:80"
+
+volumes:
+  zatusim_postgres_data:
