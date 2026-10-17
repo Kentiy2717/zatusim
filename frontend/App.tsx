@@ -15,8 +15,17 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import axios from 'axios';
 
-// Адрес нашего FastAPI бэкенда
-const API_URL = 'http://127.0.0.1:8000/api/v1';
+// Динамическое определение URL бэкенда (для локалки или прода)
+const getApiUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return '/api/v1';
+    }
+  }
+  return 'http://127.0.0.1:8000/api/v1';
+};
+
+const API_URL = getApiUrl();
 
 export default function App() {
   // Состояния для модалок
