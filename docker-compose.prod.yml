@@ -32,6 +32,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-zatusim_db}
       SECRET_KEY: ${SECRET_KEY}
+    volumes:
+      - zatusim_uploads_data:/app/uploads
     depends_on:
       zatusim_db:
         condition: service_healthy
@@ -47,3 +49,4 @@ services:
 
 volumes:
   zatusim_postgres_data:
+  zatusim_uploads_data:

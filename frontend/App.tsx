@@ -142,7 +142,7 @@ function AppShell() {
                 <Text style={styles.navBtnText}>Вход</Text>
               </Pressable>
               <Pressable style={styles.navBtnPrimary} onPress={() => openAuth('register')}>
-                <Text style={styles.navBtnPrimaryText}>Рег.</Text>
+                <Text style={styles.navBtnPrimaryText}>Регистрация</Text>
               </Pressable>
             </>
           )}

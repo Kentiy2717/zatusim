@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   avatar: { width: '100%', height: '100%' },
   avatarPlaceholder: { flex: 1, backgroundColor: '#2a2a2a', justifyContent: 'center', alignItems: 'center' },
   avatarEmoji: { fontSize: 80 },
-  avatarLoadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' },
+  avatarLoadingOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' },
   actionBtn: { backgroundColor: '#c1121f', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   actionBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   secondaryBtn: { backgroundColor: '#1a1a1a', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
