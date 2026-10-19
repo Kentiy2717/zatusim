@@ -17,7 +17,6 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Подставляем JWT из AsyncStorage в каждый запрос
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('access_token');
   if (token) {
@@ -29,6 +28,19 @@ api.interceptors.request.use(async (config) => {
 export type Gender = 'M' | 'F';
 export type Preference = 'M' | 'F' | 'B';
 export type PartyStatus = 'ready' | 'busy' | 'snooze';
+
+export interface PrivacySettings {
+  show_first_name?: boolean;
+  show_last_name?: boolean;
+  show_birth_year?: boolean;
+  show_preference?: boolean;
+  show_city?: boolean;
+  show_bio?: boolean;
+  show_phone?: boolean;
+  show_vk?: boolean;
+  show_parties?: boolean;
+  show_friends?: boolean;
+}
 
 export interface UserProfile {
   id: number;
@@ -47,7 +59,7 @@ export interface UserProfile {
   party_status: PartyStatus;
   age?: number | null;
   is_adult?: boolean;
-  privacy_settings?: Record<string, boolean>;
+  privacy_settings?: PrivacySettings;
 }
 
 export interface RegisterPayload {
@@ -57,6 +69,7 @@ export interface RegisterPayload {
   username: string;
   first_name: string;
   last_name?: string;
+  birth_date: string;
   gender: Gender;
   preference: Preference;
 }
@@ -65,3 +78,42 @@ export interface LoginPayload {
   email: string;
   password: string;
 }
+
+export interface UserUpdatePayload {
+  email?: string;
+  first_name?: string;
+  last_name?: string | null;
+  username?: string;
+  city?: string | null;
+  bio?: string | null;
+  vk_link?: string | null;
+  phone?: string | null;
+  birth_date?: string | null;
+  gender?: Gender;
+  preference?: Preference;
+  party_status?: PartyStatus;
+  privacy_settings?: PrivacySettings;
+}
+
+export interface ChangePasswordPayload {
+  old_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface ChangePasswordPayload {
+  old_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+// ДОБАВИТЬ ЭТУ ФУНКЦИЮ В КОНЕЦ ФАЙЛА
+export const getMediaUrl = (path: string | null) => {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  
+  // Получаем базовый URL бэкенда (убираем /api/v1)
+  const baseURL = api.defaults.baseURL as string; 
+  const rootUrl = baseURL.replace('/api/v1', '');
+  return `${rootUrl}${path}`;
+};

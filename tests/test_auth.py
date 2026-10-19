@@ -14,6 +14,7 @@ def test_login_success(client: TestClient) -> None:
         'first_name': 'Петр',
         'gender': 'M',
         'preference': 'F',
+        'birth_date': '1995-05-15',
     }
 
     try:
@@ -47,6 +48,7 @@ def test_login_invalid_credentials(client: TestClient) -> None:
         'first_name': 'Петр',
         'gender': 'M',
         'preference': 'F',
+        'birth_date': '1995-05-15',
     }
 
     try:
@@ -75,6 +77,7 @@ def test_get_me_success(client: TestClient) -> None:
         'first_name': 'Алексей',
         'gender': 'M',
         'preference': 'F',
+        'birth_date': '1995-05-15',
     }
 
     try:

@@ -30,6 +30,7 @@ def test_register_user_success(client: TestClient) -> None:
         'last_name': 'Иванович',
         'gender': 'M',
         'preference': 'F',
+        'birth_date': '1995-05-15',
     }
 
     try:
@@ -57,6 +58,7 @@ def test_register_user_duplicate_email(client: TestClient) -> None:
         'first_name': 'Иван',
         'gender': 'M',
         'preference': 'F',
+        'birth_date': '1995-05-15',
     }
 
     try:

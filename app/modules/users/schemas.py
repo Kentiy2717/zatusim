@@ -29,12 +29,13 @@ class UserCreate(BaseModel):
     """Схема быстрой регистрации пользователя."""
 
     email: EmailStr
-    username: str
-    first_name: str
-    gender: Gender
-    preference: Preference
     password: str
     password_confirm: str
+    username: str
+    first_name: str
+    birth_date: date
+    gender: Gender
+    preference: Preference
 
     @model_validator(mode='after')
     def check_passwords_match(self) -> Self:

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import type { Gender, Preference } from '../api/client';
@@ -27,8 +28,8 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [username, setUsername] = useState('');
   const [firstName, setFirstName] = useState('');
+  const [birthDate, setBirthDate] = useState(''); // <-- ДОБАВЛЕНО
   
-  // По умолчанию: Парень ищет Девушек
   const [gender, setGender] = useState<Gender>('M');
   const [preference, setPreference] = useState<Preference>('F');
   
@@ -41,7 +42,6 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
     setPasswordConfirm('');
   };
 
-  // Автовыбор предпочтений при смене пола
   const handleGenderSelect = (selectedGender: Gender) => {
     setGender(selectedGender);
     setPreference(selectedGender === 'M' ? 'F' : 'M');
@@ -54,8 +54,8 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
       return;
     }
     if (mode === 'register') {
-      if (!username || !firstName) {
-        setError('Укажите никнейм и имя');
+      if (!username || !firstName || !birthDate) {
+        setError('Укажите никнейм, имя и дату рождения');
         return;
       }
       if (password !== passwordConfirm) {
@@ -73,6 +73,7 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
           password_confirm: passwordConfirm,
           username,
           first_name: firstName,
+          birth_date: birthDate, // <-- ОТПРАВЛЯЕМ НА БЭК
           gender,
           preference,
         });
@@ -144,13 +145,41 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
                   value={firstName}
                   onChangeText={setFirstName}
                 />
+                <Text style={styles.label}>Дата рождения</Text>
+                {Platform.OS === 'web' ? (
+                  // @ts-ignore — нативный HTML input type="date"
+                  <input
+                    type="date"
+                    value={birthDate}
+                    onChange={(e: any) => setBirthDate(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                    style={{
+                      backgroundColor: '#2a2a2a',
+                      color: '#fff',
+                      padding: 12,
+                      borderRadius: 10,
+                      marginBottom: 10,
+                      border: '1px solid #444',
+                      width: '100%',
+                      fontSize: 14,
+                      outline: 'none',
+                      colorScheme: 'dark',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    placeholder="ГГГГ-ММ-ДД"
+                    placeholderTextColor="#888"
+                    value={birthDate}
+                    onChangeText={setBirthDate}
+                  />
+                )}
 
                 <Text style={styles.label}>Пол</Text>
                 <View style={styles.row}>
-                  {([
-                    ['M', '👨 Парень'],
-                    ['F', '👩 Девушка'],
-                  ] as const).map(([val, label]) => (
+                  {([['M', '👨 Парень'], ['F', '👩 Девушка']] as const).map(([val, label]) => (
                     <Pressable
                       key={val}
                       style={[styles.chip, gender === val && styles.chipActive]}
@@ -163,11 +192,7 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
 
                 <Text style={styles.label}>Предпочтения (для игр)</Text>
                 <View style={styles.row}>
-                  {([
-                    ['F', 'Девушки'],
-                    ['M', 'Парни'],
-                    ['B', 'Все'],
-                  ] as const).map(([val, label]) => (
+                  {([['F', 'Девушки'], ['M', 'Парни'], ['B', 'Все']] as const).map(([val, label]) => (
                     <Pressable
                       key={val}
                       style={[styles.chip, preference === val && styles.chipActive]}
@@ -217,35 +242,12 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center' },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
-  card: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#c1121f',
-    maxWidth: 420,
-    width: '100%',
-    alignSelf: 'center',
-  },
+  card: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#c1121f', maxWidth: 420, width: '100%', alignSelf: 'center' },
   title: { color: '#fdf0d5', fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 18 },
-  input: {
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#444',
-  },
+  input: { backgroundColor: '#2a2a2a', color: '#fff', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#444' },
   label: { color: '#aaa', marginBottom: 6, marginTop: 4, fontSize: 13 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#444',
-  },
+  chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#444' },
   chipActive: { borderColor: '#c1121f', backgroundColor: 'rgba(193,18,31,0.25)' },
   chipText: { color: '#fff', fontSize: 13 },
   error: { color: '#ff8a8a', marginBottom: 8, textAlign: 'center' },
