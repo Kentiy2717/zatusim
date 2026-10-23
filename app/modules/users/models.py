@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Date, DateTime, String, Text, func
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.modules.users.enums import Gender, PartyStatus, Preference
 from app.modules.users.schemas import PrivacySettings
+
+if TYPE_CHECKING:
+    from app.modules.friends.models import Friendship
 
 
 class User(Base):
@@ -47,6 +52,14 @@ class User(Base):
     privacy_settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         default=lambda: PrivacySettings().model_dump()
+    )
+
+    # Взаимосвязи с моделью Friendship
+    sent_friendships: Mapped[list[Friendship]] = relationship(
+        'Friendship', foreign_keys='Friendship.user_id', back_populates='user'
+    )
+    received_friendships: Mapped[list[Friendship]] = relationship(
+        'Friendship', foreign_keys='Friendship.friend_id', back_populates='friend'
     )
 
     def __repr__(self) -> str:
