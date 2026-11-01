@@ -1,0 +1,17 @@
+services:
+  test_db:
+    image: postgres:15-alpine
+    container_name: test_zatusim_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_zatusim_db
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data    # ← данные в RAM (быстро и исчезает при остановке)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d test_zatusim_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
