@@ -1,25 +1,30 @@
 """Интеграционные тесты модуля друзей: заявки, чёрный список, поиск.
 
-Тесты работают через реальные HTTP-вызовы и реального текущего пользователя
-(JWT), чтобы проверить каноническое хранение пары ``user_id < friend_id``
-и корректную подстановку ``other_user`` для обеих сторон.
+Тесты работают через реальные HTTP-вызовы и реального текущего пользователя,
+чтобы проверить каноническое хранение пары ``user_id < friend_id`` и
+корректную подстановку ``other_user`` для обеих сторон связи.
 """
 
-from collections.abc import AsyncGenerator
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
 
+from app.api.deps import get_current_user
+from app.main import app
 from app.modules.users.models import User
 from app.modules.users.schemas import UserCreate
 from app.modules.users.service import UserService
 
+FRIENDS = '/api/v1/friends'
+SEARCH = '/api/v1/users/search'
+
 
 # ==============================================================================
-# ФИКСТУРЫ: ДВА ПОЛНОЦЕННЫХ ПОЛЬЗОВАТЕЛЯ
+# ФИКСТУРЫ И ОБЁРТКА НАД КЛИЕНТОМ
 # ==============================================================================
 @pytest.fixture
-async def two_users(db, user_data_factory) -> tuple[User, User]:
+async def ivan_and_masha(db, user_data_factory) -> tuple[User, User]:
     """Создаёт двух пользователей напрямую через сервис."""
 
     ivan = await UserService.create_user(
@@ -37,45 +42,112 @@ async def two_users(db, user_data_factory) -> tuple[User, User]:
     return ivan, masha
 
 
+class Actor:
+    """Клиент, привязанный к конкретному пользователю.
+
+    Перед каждым запросом подменяет зависимость ``get_current_user``, поэтому
+    в одном тесте можно свободно ходить то за одну, то за другую сторону.
+    """
+
+    def __init__(self, client: AsyncClient, user: User) -> None:
+        self._client = client
+        self.user = user
+
+    @property
+    def id(self) -> int:
+        return self.user.id
+
+    @property
+    def username(self) -> str:
+        return self.user.username
+
+    def _impersonate(self) -> None:
+        app.dependency_overrides[get_current_user] = lambda: self.user
+
+    async def request(self, method: str, url: str, **kwargs: Any):
+        self._impersonate()
+        return await self._client.request(method, url, **kwargs)
+
+    async def get(self, url: str, **kwargs: Any):
+        return await self.request('GET', url, **kwargs)
+
+    async def post(self, url: str, **kwargs: Any):
+        return await self.request('POST', url, **kwargs)
+
+    async def delete(self, url: str, **kwargs: Any):
+        return await self.request('DELETE', url, **kwargs)
+
+    # --- короткие хелперы предметной области ---
+    async def send_request(self, target: 'Actor'):
+        return await self.post(f'{FRIENDS}/requests', json={'user_id': target.id})
+
+    async def accept(self, request_id: int):
+        return await self.post(f'{FRIENDS}/requests/{request_id}/accept')
+
+    async def decline(self, request_id: int):
+        return await self.post(f'{FRIENDS}/requests/{request_id}/decline')
+
+    async def cancel(self, request_id: int):
+        return await self.delete(f'{FRIENDS}/requests/{request_id}')
+
+    async def friends(self):
+        return await self.get(FRIENDS)
+
+    async def incoming(self):
+        return await self.get(f'{FRIENDS}/requests/incoming')
+
+    async def outgoing(self):
+        return await self.get(f'{FRIENDS}/requests/outgoing')
+
+    async def blocks(self):
+        return await self.get(f'{FRIENDS}/blocks')
+
+    async def block(self, target_id: int):
+        return await self.post(f'{FRIENDS}/blocks', json={'user_id': target_id})
+
+    async def unblock(self, target_id: int):
+        return await self.delete(f'{FRIENDS}/blocks/{target_id}')
+
+    async def relation(self, target_id: int):
+        return await self.get(f'{FRIENDS}/relation/{target_id}')
+
+    async def patch_profile(self, payload: dict):
+        return await self.request('PATCH', '/api/v1/users/me', json=payload)
+
+
 @pytest.fixture
-async def pair(two_users: tuple[User, User]) -> tuple[User, User]:
-    """Пара пользователей: (иван, маша)."""
-
-    return two_users
+async def ivan(client: AsyncClient, ivan_and_masha) -> Actor:
+    return Actor(client, ivan_and_masha[0])
 
 
 @pytest.fixture
-async def ivan_client(client: AsyncClient, pair) -> AsyncGenerator[AsyncClient, None]:
-    """Клиент с авторизацией за первого пользователя."""
+async def masha(client: AsyncClient, ivan_and_masha) -> Actor:
+    return Actor(client, ivan_and_masha[1])
 
-    from app.api.deps import get_current_user
-    from app.main import app
 
-    ivan, _ = pair
+@pytest.fixture(autouse=True)
+def _clear_overrides():
+    """Убирает подмену авторизации после каждого теста."""
 
-    async def override() -> User:
-        return ivan
-
-    app.dependency_overrides[get_current_user] = override
-    yield client
+    yield
     app.dependency_overrides.pop(get_current_user, None)
 
 
-@pytest.fixture
-async def masha_client(client: AsyncClient, pair) -> AsyncGenerator[AsyncClient, None]:
-    """Клиент с авторизацией за второго пользователя."""
+async def make_request(ivan: Actor, masha: Actor) -> int:
+    """Создаёт заявку Иван → Маша и возвращает её id."""
 
-    from app.api.deps import get_current_user
-    from app.main import app
+    response = await ivan.send_request(masha)
+    assert response.status_code == 201, response.text
+    return response.json()['id']
 
-    _, masha = pair
 
-    async def override() -> User:
-        return masha
+async def make_friends(ivan: Actor, masha: Actor) -> int:
+    """Создаёт и принимает заявку Иван → Маша."""
 
-    app.dependency_overrides[get_current_user] = override
-    yield client
-    app.dependency_overrides.pop(get_current_user, None)
+    request_id = await make_request(ivan, masha)
+    accepted = await masha.accept(request_id)
+    assert accepted.status_code == 200, accepted.text
+    return request_id
 
 
 # ==============================================================================
@@ -85,14 +157,11 @@ class TestSendRequest:
     """POST /api/v1/friends/requests"""
 
     async def test_success_returns_201_and_pair_is_canonical(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Заявка создаётся, пара хранится в каноническом виде."""
 
-        ivan, masha = pair
-        response = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': masha.id}
-        )
+        response = await ivan.send_request(masha)
 
         assert response.status_code == 201
         data = response.json()
@@ -104,89 +173,78 @@ class TestSendRequest:
         assert data['user']['id'] == min(ivan.id, masha.id)
         assert data['friend']['id'] == max(ivan.id, masha.id)
 
-    async def test_by_username(self, ivan_client: AsyncClient, pair) -> None:
+    async def test_by_username(self, ivan: Actor, masha: Actor) -> None:
         """Заявку можно отправить по username."""
 
-        _, masha = pair
-        response = await ivan_client.post(
-            '/api/v1/friends/requests', json={'username': masha.username}
+        response = await ivan.post(
+            f'{FRIENDS}/requests', json={'username': masha.username}
         )
 
         assert response.status_code == 201
         assert response.json()['other_user']['id'] == masha.id
 
     async def test_requires_exactly_one_identifier(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Без идентификатора или с обоими сразу — 422."""
 
-        _, masha = pair
-
-        empty = await ivan_client.post('/api/v1/friends/requests', json={})
+        empty = await ivan.post(f'{FRIENDS}/requests', json={})
         assert empty.status_code == 422
 
-        both = await ivan_client.post(
-            '/api/v1/friends/requests',
+        both = await ivan.post(
+            f'{FRIENDS}/requests',
             json={'username': masha.username, 'user_id': masha.id},
         )
         assert both.status_code == 422
 
-    async def test_self_request_returns_400(self, ivan_client: AsyncClient, pair) -> None:
+    async def test_self_request_returns_400(self, ivan: Actor) -> None:
         """Нельзя добавить в друзья самого себя."""
 
-        ivan, _ = pair
-        response = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': ivan.id}
-        )
+        response = await ivan.post(f'{FRIENDS}/requests', json={'user_id': ivan.id})
 
         assert response.status_code == 400
         assert 'самого себя' in response.json()['detail']
 
-    async def test_unknown_user_returns_404(self, ivan_client: AsyncClient) -> None:
+    async def test_unknown_user_returns_404(self, ivan: Actor) -> None:
         """Несуществующий пользователь — 404."""
 
-        response = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': 999999}
-        )
+        response = await ivan.post(f'{FRIENDS}/requests', json={'user_id': 999999})
 
         assert response.status_code == 404
 
     async def test_duplicate_request_returns_400(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Повторная отправка той же заявки — 400."""
 
-        _, masha = pair
-        payload = {'user_id': masha.id}
+        assert (await ivan.send_request(masha)).status_code == 201
 
-        first = await ivan_client.post('/api/v1/friends/requests', json=payload)
-        assert first.status_code == 201
-
-        second = await ivan_client.post('/api/v1/friends/requests', json=payload)
+        second = await ivan.send_request(masha)
         assert second.status_code == 400
         assert 'уже отправлена' in second.json()['detail']
 
     async def test_counter_request_auto_accepts(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Встречная заявка принимается автоматически."""
 
-        ivan, masha = pair
+        assert (await ivan.send_request(masha)).status_code == 201
 
-        first = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': masha.id}
-        )
-        assert first.status_code == 201
-
-        counter = await masha_client.post(
-            '/api/v1/friends/requests', json={'user_id': ivan.id}
-        )
+        counter = await masha.send_request(ivan)
         assert counter.status_code == 201
         assert counter.json()['status'] == 'accepted'
 
-        friends = await ivan_client.get('/api/v1/friends')
+        friends = await ivan.friends()
         assert friends.status_code == 200
         assert len(friends.json()) == 1
+
+    async def test_unauthorized_returns_401(self, client: AsyncClient) -> None:
+        """Без токена список друзей недоступен."""
+
+        app.dependency_overrides.pop(get_current_user, None)
+        response = await client.get(FRIENDS)
+
+        assert response.status_code == 401
 
 
 # ==============================================================================
@@ -196,55 +254,43 @@ class TestLists:
     """Списки друзей, входящих и исходящих заявок."""
 
     async def test_incoming_and_outgoing_are_perspective_aware(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """У каждой стороны свой список и свой other_user."""
 
-        ivan, masha = pair
-        await ivan_client.post('/api/v1/friends/requests', json={'user_id': masha.id})
+        await ivan.send_request(masha)
 
-        ivan_outgoing = await ivan_client.get('/api/v1/friends/requests/outgoing')
-        ivan_incoming = await ivan_client.get('/api/v1/friends/requests/incoming')
-        masha_incoming = await masha_client.get('/api/v1/friends/requests/incoming')
-        masha_outgoing = await masha_client.get('/api/v1/friends/requests/outgoing')
+        ivan_outgoing = await ivan.outgoing()
+        ivan_incoming = await ivan.incoming()
+        masha_incoming = await masha.incoming()
+        masha_outgoing = await masha.outgoing()
 
         assert len(ivan_outgoing.json()) == 1
         assert ivan_outgoing.json()[0]['other_user']['id'] == masha.id
         assert ivan_outgoing.json()[0]['initiated_by_me'] is True
-        assert len(ivan_incoming.json()) == 0
+        assert ivan_incoming.json() == []
 
         assert len(masha_incoming.json()) == 1
         assert masha_incoming.json()[0]['other_user']['id'] == ivan.id
         assert masha_incoming.json()[0]['initiated_by_me'] is False
-        assert len(masha_outgoing.json()) == 0
+        assert masha_outgoing.json() == []
 
         # До принятия список друзей пуст у обоих
-        assert (await ivan_client.get('/api/v1/friends')).json() == []
+        assert (await ivan.friends()).json() == []
+        assert (await masha.friends()).json() == []
 
-    async def test_friends_list_after_accept(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
+    async def test_friends_list_after_accept(self, ivan: Actor, masha: Actor) -> None:
         """После принятия оба видят друг друга в друзьях."""
 
-        ivan, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
+        await make_friends(ivan, masha)
 
-        accepted = await masha_client.post(
-            f'/api/v1/friends/requests/{request_id}/accept'
-        )
-        assert accepted.status_code == 200
-        assert accepted.json()['status'] == 'accepted'
-
-        for client_, other in ((ivan_client, masha), (masha_client, ivan)):
-            friends = await client_.get('/api/v1/friends')
+        for actor, other in ((ivan, masha), (masha, ivan)):
+            friends = await actor.friends()
             assert friends.status_code == 200
             body = friends.json()
             assert len(body) == 1
             assert body[0]['other_user']['username'] == other.username
+            assert body[0]['status'] == 'accepted'
 
 
 # ==============================================================================
@@ -254,99 +300,59 @@ class TestRequestActions:
     """Действия над заявками и дружбой."""
 
     async def test_accept_own_request_returns_404(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Собственную заявку принять нельзя."""
 
-        _, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
+        request_id = await make_request(ivan, masha)
 
-        response = await ivan_client.post(
-            f'/api/v1/friends/requests/{request_id}/accept'
-        )
+        response = await ivan.accept(request_id)
         assert response.status_code == 404
 
-    async def test_decline_blocks_resend(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
+    async def test_decline_blocks_resend(self, ivan: Actor, masha: Actor) -> None:
         """Отклонённую заявку нельзя отправить повторно."""
 
-        _, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
+        request_id = await make_request(ivan, masha)
 
-        declined = await masha_client.post(
-            f'/api/v1/friends/requests/{request_id}/decline'
-        )
-        assert declined.status_code == 204
+        assert (await masha.decline(request_id)).status_code == 204
+        assert (await masha.incoming()).json() == []
 
-        # У Маши заявка исчезла из входящих
-        assert (await masha_client.get('/api/v1/friends/requests/incoming')).json() == []
-
-        # Повторная отправка запрещена
-        again = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': masha.id}
-        )
+        again = await ivan.send_request(masha)
         assert again.status_code == 400
         assert 'отклонена' in again.json()['detail']
 
-        # Состояние связи отражает отказ
-        relation = await ivan_client.get(f'/api/v1/friends/relation/{masha.id}')
+        relation = await ivan.relation(masha.id)
         assert relation.json()['is_declined'] is True
         assert relation.json()['is_friend'] is False
 
-    async def test_cancel_outgoing_request(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
-        """Инициатор может отозвать свою заявку."""
+    async def test_cancel_outgoing_request(self, ivan: Actor, masha: Actor) -> None:
+        """Инициатор может отозвать свою заявку и отправить заново."""
 
-        _, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
+        request_id = await make_request(ivan, masha)
 
-        cancelled = await ivan_client.delete(f'/api/v1/friends/requests/{request_id}')
-        assert cancelled.status_code == 204
+        assert (await ivan.cancel(request_id)).status_code == 204
+        assert (await ivan.outgoing()).json() == []
+        assert (await masha.incoming()).json() == []
 
-        assert (await ivan_client.get('/api/v1/friends/requests/outgoing')).json() == []
-        assert (await masha_client.get('/api/v1/friends/requests/incoming')).json() == []
+        assert (await ivan.send_request(masha)).status_code == 201
 
-        # После отзыва заявку можно отправить заново
-        again = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': masha.id}
-        )
-        assert again.status_code == 201
-
-    async def test_remove_friend(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
+    async def test_remove_friend(self, ivan: Actor, masha: Actor) -> None:
         """Удаление из друзей разрывает связь у обеих сторон."""
 
-        _, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
-        await masha_client.post(f'/api/v1/friends/requests/{request_id}/accept')
+        await make_friends(ivan, masha)
 
-        removed = await ivan_client.delete(f'/api/v1/friends/{masha.id}')
-        assert removed.status_code == 204
+        assert (await ivan.delete(f'{FRIENDS}/{masha.id}')).status_code == 204
+        assert (await ivan.friends()).json() == []
+        assert (await masha.friends()).json() == []
 
-        assert (await ivan_client.get('/api/v1/friends')).json() == []
-        assert (await masha_client.get('/api/v1/friends')).json() == []
-
-        second = await ivan_client.delete(f'/api/v1/friends/{masha.id}')
+        second = await ivan.delete(f'{FRIENDS}/{masha.id}')
         assert second.status_code == 404
+
+    async def test_remove_stranger_returns_404(self, ivan: Actor, masha: Actor) -> None:
+        """Удалить не-друга нельзя."""
+
+        response = await ivan.delete(f'{FRIENDS}/{masha.id}')
+        assert response.status_code == 404
 
 
 # ==============================================================================
@@ -355,90 +361,64 @@ class TestRequestActions:
 class TestBlocks:
     """Блокировки и их влияние на заявки."""
 
-    async def test_block_breaks_friendship(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
+    async def test_block_breaks_friendship(self, ivan: Actor, masha: Actor) -> None:
         """Блокировка удаляет существующую дружбу."""
 
-        _, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
-        await masha_client.post(f'/api/v1/friends/requests/{request_id}/accept')
+        await make_friends(ivan, masha)
 
-        blocked = await ivan_client.post(
-            '/api/v1/friends/blocks', json={'user_id': masha.id}
-        )
+        blocked = await ivan.block(masha.id)
         assert blocked.status_code == 201
         assert blocked.json()['blocked']['id'] == masha.id
 
-        assert (await ivan_client.get('/api/v1/friends')).json() == []
-        assert (await masha_client.get('/api/v1/friends')).json() == []
-
-        blocks = await ivan_client.get('/api/v1/friends/blocks')
-        assert len(blocks.json()) == 1
+        assert (await ivan.friends()).json() == []
+        assert (await masha.friends()).json() == []
+        assert len((await ivan.blocks()).json()) == 1
 
     async def test_blocked_user_cannot_send_request(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
-        """Заблокированный пользователь получает 404 (факт блока не раскрываем)."""
+        """Заблокированный получает 404 — факт блокировки не раскрываем."""
 
-        _, masha = pair
-        await ivan_client.post('/api/v1/friends/blocks', json={'user_id': masha.id})
+        await ivan.block(masha.id)
 
-        ivan, _ = pair
-        response = await masha_client.post(
-            '/api/v1/friends/requests', json={'user_id': ivan.id}
-        )
+        response = await masha.send_request(ivan)
         assert response.status_code == 404
 
     async def test_request_to_blocked_user_returns_400(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Нельзя отправить заявку тому, кого сам заблокировал."""
 
-        _, masha = pair
-        await ivan_client.post('/api/v1/friends/blocks', json={'user_id': masha.id})
+        await ivan.block(masha.id)
 
-        response = await ivan_client.post(
-            '/api/v1/friends/requests', json={'user_id': masha.id}
-        )
+        response = await ivan.send_request(masha)
         assert response.status_code == 400
         assert 'разблокируйте' in response.json()['detail'].lower()
 
-    async def test_duplicate_block_and_unblock(
-        self, ivan_client: AsyncClient, pair
+    async def test_accept_after_block_returns_404(
+        self, ivan: Actor, masha: Actor
     ) -> None:
+        """Блокировка удаляет и зависшую заявку — принимать нечего."""
+
+        request_id = await make_request(ivan, masha)
+        await ivan.block(masha.id)
+
+        assert (await masha.accept(request_id)).status_code == 404
+
+    async def test_duplicate_block_and_unblock(self, ivan: Actor, masha: Actor) -> None:
         """Повторный блок — 400, разблокировка — 204, повторная — 404."""
 
-        _, masha = pair
+        assert (await ivan.block(masha.id)).status_code == 201
+        assert (await ivan.block(masha.id)).status_code == 400
 
-        first = await ivan_client.post(
-            '/api/v1/friends/blocks', json={'user_id': masha.id}
-        )
-        assert first.status_code == 201
+        assert (await ivan.unblock(masha.id)).status_code == 204
+        assert (await ivan.blocks()).json() == []
+        assert (await ivan.unblock(masha.id)).status_code == 404
 
-        duplicate = await ivan_client.post(
-            '/api/v1/friends/blocks', json={'user_id': masha.id}
-        )
-        assert duplicate.status_code == 400
-
-        unblocked = await ivan_client.delete(f'/api/v1/friends/blocks/{masha.id}')
-        assert unblocked.status_code == 204
-        assert (await ivan_client.get('/api/v1/friends/blocks')).json() == []
-
-        again = await ivan_client.delete(f'/api/v1/friends/blocks/{masha.id}')
-        assert again.status_code == 404
-
-    async def test_block_self_returns_400(self, ivan_client: AsyncClient, pair) -> None:
+    async def test_block_self_returns_400(self, ivan: Actor) -> None:
         """Заблокировать себя нельзя."""
 
-        ivan, _ = pair
-        response = await ivan_client.post(
-            '/api/v1/friends/blocks', json={'user_id': ivan.id}
-        )
+        response = await ivan.block(ivan.id)
         assert response.status_code == 400
 
 
@@ -449,57 +429,60 @@ class TestSearchAndRelation:
     """GET /api/v1/users/search и GET /api/v1/friends/relation/{id}"""
 
     async def test_search_finds_by_username_with_relation(
-        self, ivan_client: AsyncClient, pair
+        self, ivan: Actor, masha: Actor
     ) -> None:
         """Поиск находит пользователя и отдаёт состояние связи."""
 
-        _, masha = pair
-
-        response = await ivan_client.get('/api/v1/users/search', params={'q': 'masha'})
+        response = await ivan.get(SEARCH, params={'q': 'masha'})
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
         assert body[0]['username'] == masha.username
-        assert body[0]['relation'] is None or body[0]['relation']['is_friend'] is False
+        assert body[0]['relation'] is not None
+        assert body[0]['relation']['is_friend'] is False
 
-        # После заявки статус связи появляется в выдаче
-        await ivan_client.post('/api/v1/friends/requests', json={'user_id': masha.id})
-        second = await ivan_client.get('/api/v1/users/search', params={'q': 'masha'})
+        await ivan.send_request(masha)
+
+        second = await ivan.get(SEARCH, params={'q': 'masha'})
         relation = second.json()[0]['relation']
         assert relation['is_outgoing_request'] is True
         assert relation['status'] == 'pending'
 
-    async def test_search_does_not_return_self(
-        self, ivan_client: AsyncClient, pair
-    ) -> None:
+    async def test_search_finds_by_first_name(self, ivan: Actor) -> None:
+        """Поиск работает и по имени."""
+
+        response = await ivan.get(SEARCH, params={'q': 'Маш'})
+        assert response.status_code == 200
+        assert [item['username'] for item in response.json()] == ['masha_95']
+
+    async def test_search_does_not_return_self(self, ivan: Actor) -> None:
         """Себя в выдаче нет."""
 
-        ivan, _ = pair
-        response = await ivan_client.get('/api/v1/users/search', params={'q': 'ivan'})
-
+        response = await ivan.get(SEARCH, params={'q': 'ivan'})
         assert response.status_code == 200
         assert all(item['id'] != ivan.id for item in response.json())
 
-    async def test_search_requires_min_length(self, ivan_client: AsyncClient) -> None:
+    async def test_search_requires_min_length(self, ivan: Actor) -> None:
         """Запрос короче двух символов — 422."""
 
-        response = await ivan_client.get('/api/v1/users/search', params={'q': 'a'})
+        response = await ivan.get(SEARCH, params={'q': 'a'})
         assert response.status_code == 422
 
-    async def test_relation_endpoint(
-        self, ivan_client: AsyncClient, masha_client: AsyncClient, pair
-    ) -> None:
+    async def test_search_respects_privacy(self, ivan: Actor, masha: Actor) -> None:
+        """Скрытый приватностью город не попадает в выдачу поиска."""
+
+        await masha.patch_profile({'city': 'Томск', 'privacy_settings': {'show_city': False}})
+
+        response = await ivan.get(SEARCH, params={'q': 'masha'})
+        assert response.json()[0]['city'] is None
+
+    async def test_relation_endpoint(self, ivan: Actor, masha: Actor) -> None:
         """Сводка состояния связи для обеих сторон."""
 
-        ivan, masha = pair
-        request_id = (
-            await ivan_client.post(
-                '/api/v1/friends/requests', json={'user_id': masha.id}
-            )
-        ).json()['id']
+        request_id = await make_request(ivan, masha)
 
-        ivan_relation = await ivan_client.get(f'/api/v1/friends/relation/{masha.id}')
-        masha_relation = await masha_client.get(f'/api/v1/friends/relation/{ivan.id}')
+        ivan_relation = await ivan.relation(masha.id)
+        masha_relation = await masha.relation(ivan.id)
         assert ivan_relation.status_code == 200
         assert masha_relation.status_code == 200
 
@@ -508,25 +491,20 @@ class TestSearchAndRelation:
         assert masha_relation.json()['is_incoming_request'] is True
         assert masha_relation.json()['friendship_id'] == request_id
 
-        await masha_client.post(f'/api/v1/friends/requests/{request_id}/accept')
+        await masha.accept(request_id)
 
-        accepted = await ivan_client.get(f'/api/v1/friends/relation/{masha.id}')
+        accepted = await ivan.relation(masha.id)
         assert accepted.json()['is_friend'] is True
         assert accepted.json()['status'] == 'accepted'
 
-    async def test_relation_with_self_returns_400(
-        self, ivan_client: AsyncClient, pair
-    ) -> None:
+    async def test_relation_with_self_returns_400(self, ivan: Actor) -> None:
         """Связь с самим собой не отдаём."""
 
-        ivan, _ = pair
-        response = await ivan_client.get(f'/api/v1/friends/relation/{ivan.id}')
+        response = await ivan.relation(ivan.id)
         assert response.status_code == 400
 
-    async def test_relation_with_unknown_user_returns_404(
-        self, ivan_client: AsyncClient
-    ) -> None:
+    async def test_relation_with_unknown_user_returns_404(self, ivan: Actor) -> None:
         """Несуществующий пользователь — 404."""
 
-        response = await ivan_client.get('/api/v1/friends/relation/999999')
+        response = await ivan.relation(999999)
         assert response.status_code == 404

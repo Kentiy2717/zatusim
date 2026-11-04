@@ -27,7 +27,6 @@ from app.modules.friends.schemas import (
     RelationRead,
 )
 from app.modules.users.models import User
-from app.modules.users.schemas import UserShort
 from app.modules.users.service import UserService
 
 # Ограничение выдачи глобального поиска пользователей
@@ -496,8 +495,12 @@ class FriendService:
     @staticmethod
     async def search_users(
         session: AsyncSession, me: User, query: str
-    ) -> list[UserShort]:
-        """Глобальный поиск пользователей по username или имени."""
+    ) -> list[User]:
+        """Глобальный поиск пользователей по username или имени.
+
+        Возвращает ORM-объекты: фильтрацию полей по настройкам приватности
+        выполняет вызывающий код (``UserService.search``).
+        """
 
         pattern = f'%{query.strip()}%'
         stmt = (
@@ -514,7 +517,7 @@ class FriendService:
             .limit(SEARCH_LIMIT)
         )
         result = await session.execute(stmt)
-        return [UserShort.model_validate(user) for user in result.scalars().all()]
+        return list(result.scalars().all())
 
     @staticmethod
     async def count_friends(session: AsyncSession, me_id: int) -> int:
