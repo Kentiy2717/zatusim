@@ -18,6 +18,7 @@ from app.modules.users.schemas import (
     UserChangePassword,
     UserCreate,
     UserReadPublic,
+    UserSearchItem,
     UserUpdate,
 )
 
@@ -158,6 +159,48 @@ class UserService:
         await db.commit()
         await db.refresh(current_user)
         return current_user
+
+    @staticmethod
+    async def search(
+        db: AsyncSession,
+        current_user: User,
+        query: str,
+        limit: int = 20,
+    ) -> list[UserSearchItem]:
+        """Глобальный поиск пользователей с карточкой и состоянием связи.
+
+        Выборка ограничена лимитом, состояние связи подтягивается двумя
+        дополнительными запросами на весь список (без N+1).
+        """
+
+        from app.modules.friends.service import FriendService
+
+        found = await FriendService.search_users(db, current_user, query)
+        if not found:
+            return []
+
+        relations = await FriendService.bulk_relations(
+            db, current_user.id, [user.id for user in found]
+        )
+
+        items: list[UserSearchItem] = []
+        for target in found:
+            privacy = target.privacy_settings or {}
+            items.append(
+                UserSearchItem(
+                    id=target.id,
+                    username=target.username,
+                    first_name=(
+                        target.first_name if privacy.get('show_first_name', True) else 'Аноним'
+                    ),
+                    last_name=target.last_name if privacy.get('show_last_name', True) else None,
+                    avatar_url=target.avatar_url,
+                    city=target.city if privacy.get('show_city', True) else None,
+                    party_status=target.party_status,
+                    relation=relations.get(target.id),
+                )
+            )
+        return items[:limit]
 
     @staticmethod
     async def get_public_profile(

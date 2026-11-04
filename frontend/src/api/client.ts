@@ -101,13 +101,6 @@ export interface ChangePasswordPayload {
   new_password_confirm: string;
 }
 
-export interface ChangePasswordPayload {
-  old_password: string;
-  new_password: string;
-  new_password_confirm: string;
-}
-
-// ДОБАВИТЬ ЭТУ ФУНКЦИЮ В КОНЕЦ ФАЙЛА
 export const getMediaUrl = (path: string | null) => {
   if (!path) return null;
   if (path.startsWith('http')) return path;
@@ -116,4 +109,93 @@ export const getMediaUrl = (path: string | null) => {
   const baseURL = api.defaults.baseURL as string; 
   const rootUrl = baseURL.replace('/api/v1', '');
   return `${rootUrl}${path}`;
+};
+
+// ==============================================================================
+// ДРУЗЬЯ И ЧЁРНЫЙ СПИСОК
+// ==============================================================================
+export type FriendshipStatus = 'pending' | 'accepted' | 'declined';
+
+export interface RelationBrief {
+  status: FriendshipStatus | null;
+  friendship_id: number | null;
+  is_friend: boolean;
+  is_incoming_request: boolean;
+  is_outgoing_request: boolean;
+  is_declined: boolean;
+  is_blocked_by_me: boolean;
+  is_blocked_me: boolean;
+}
+
+export interface Relation extends RelationBrief {
+  user_id: number;
+}
+
+export interface UserShort {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface Friendship {
+  id: number;
+  status: FriendshipStatus;
+  created_at: string;
+  updated_at: string;
+  user: UserShort;
+  friend: UserShort;
+  initiator_id: number;
+  other_user: UserShort | null;
+  initiated_by_me: boolean | null;
+}
+
+export interface BlockItem {
+  id: number;
+  blocked_id: number;
+  created_at: string;
+  blocked: UserShort;
+}
+
+export interface UserSearchItem {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string | null;
+  avatar_url: string | null;
+  city: string | null;
+  party_status: PartyStatus;
+  relation: RelationBrief | null;
+}
+
+/** Достаёт человекочитаемое сообщение об ошибке из ответа FastAPI. */
+export const getApiError = (err: any, fallback = 'Что-то пошло не так'): string => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail.length > 0) return detail[0].msg ?? fallback;
+  return err?.message ?? fallback;
+};
+
+export const friendsApi = {
+  list: () => api.get<Friendship[]>('/friends'),
+  incoming: () => api.get<Friendship[]>('/friends/requests/incoming'),
+  outgoing: () => api.get<Friendship[]>('/friends/requests/outgoing'),
+  blocks: () => api.get<BlockItem[]>('/friends/blocks'),
+  search: (q: string) =>
+    api.get<UserSearchItem[]>('/users/search', { params: { q } }),
+
+  send: (payload: { username?: string; user_id?: number }) =>
+    api.post<Friendship>('/friends/requests', payload),
+  accept: (requestId: number) =>
+    api.post<Friendship>(`/friends/requests/${requestId}/accept`),
+  decline: (requestId: number) =>
+    api.post(`/friends/requests/${requestId}/decline`),
+  cancel: (requestId: number) => api.delete(`/friends/requests/${requestId}`),
+
+  remove: (friendId: number) => api.delete(`/friends/${friendId}`),
+  block: (payload: { username?: string; user_id?: number }) =>
+    api.post<BlockItem>('/friends/blocks', payload),
+  unblock: (blockedId: number) => api.delete(`/friends/blocks/${blockedId}`),
+  relation: (userId: number) => api.get<Relation>(`/friends/relation/${userId}`),
 };

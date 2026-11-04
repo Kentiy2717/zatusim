@@ -1,9 +1,9 @@
 from datetime import date, datetime
 from typing import Self
 
-from pydantic import BaseModel, EmailStr, computed_field, model_validator
+from pydantic import BaseModel, EmailStr, Field, computed_field, model_validator
 
-from app.core.schemas import AppBaseModel
+from app.core.schemas import AppBaseModel, RelationBrief
 from app.modules.users.enums import Gender, PartyStatus, Preference
 
 
@@ -98,7 +98,30 @@ class UserShort(AppBaseModel):
 
 
 # ==============================================================================
-# 4. МОЙ ПРОФИЛЬ (Полная отдача данных для самого себя)
+# 4. ПОИСК ПОЛЬЗОВАТЕЛЕЙ (Карточка результата + состояние связи)
+# ==============================================================================
+class UserSearchItem(BaseModel):
+    """Карточка пользователя в результатах поиска.
+
+    Поля формируются сервисом с учётом настроек приватности владельца.
+    """
+
+    id: int
+    username: str
+    first_name: str
+    last_name: str | None = None
+    avatar_url: str | None = None
+    city: str | None = None
+    party_status: PartyStatus
+
+    relation: RelationBrief | None = Field(
+        default=None,
+        description='Состояние связи с текущим пользователем',
+    )
+
+
+# ==============================================================================
+# 5. МОЙ ПРОФИЛЬ (Полная отдача данных для самого себя)
 # ==============================================================================
 class UserReadMe(AppBaseModel):
     """Полные данные собственного профиля."""
@@ -140,7 +163,7 @@ class UserReadMe(AppBaseModel):
 
 
 # ==============================================================================
-# 5. ПУБЛИЧНЫЙ ПРОФИЛЬ (Чужая страница пользователя)
+# 6. ПУБЛИЧНЫЙ ПРОФИЛЬ (Чужая страница пользователя)
 # ==============================================================================
 class UserReadPublic(AppBaseModel):
     """Данные чужого профиля (фильтруются бизнес-логикой)."""

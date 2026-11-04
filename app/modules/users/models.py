@@ -13,7 +13,7 @@ from app.modules.users.enums import Gender, PartyStatus, Preference
 from app.modules.users.schemas import PrivacySettings
 
 if TYPE_CHECKING:
-    from app.modules.friends.models import Friendship
+    from app.modules.friends.models import Block, Friendship
 
 
 class User(Base):
@@ -54,12 +54,36 @@ class User(Base):
         default=lambda: PrivacySettings().model_dump()
     )
 
-    # Взаимосвязи с моделью Friendship
-    sent_friendships: Mapped[list[Friendship]] = relationship(
-        'Friendship', foreign_keys='Friendship.user_id', back_populates='user'
+    # --- Дружеские связи (каноническая пара: user_id < friend_id) ---
+    friendships_low: Mapped[list[Friendship]] = relationship(
+        'Friendship',
+        foreign_keys='Friendship.user_id',
+        back_populates='user',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
     )
-    received_friendships: Mapped[list[Friendship]] = relationship(
-        'Friendship', foreign_keys='Friendship.friend_id', back_populates='friend'
+    friendships_high: Mapped[list[Friendship]] = relationship(
+        'Friendship',
+        foreign_keys='Friendship.friend_id',
+        back_populates='friend',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+
+    # --- Блокировки ---
+    blocks_made: Mapped[list[Block]] = relationship(
+        'Block',
+        foreign_keys='Block.blocker_id',
+        back_populates='blocker',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    blocks_received: Mapped[list[Block]] = relationship(
+        'Block',
+        foreign_keys='Block.blocked_id',
+        back_populates='blocked',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

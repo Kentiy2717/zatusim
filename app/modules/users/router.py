@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.users.models import User
@@ -8,6 +8,7 @@ from app.modules.users.schemas import (
     UserChangePassword,
     UserReadMe,
     UserReadPublic,
+    UserSearchItem,
     UserUpdate,
 )
 from app.modules.users.service import UserService
@@ -82,6 +83,21 @@ async def change_password(
         password_data=data,
     )
     return {'message': 'Пароль успешно изменен'}
+
+
+@router.get(
+    '/search',
+    response_model=list[UserSearchItem],
+    summary='Поиск пользователей',
+)
+async def search_users(
+    session: DbSession,
+    current_user: CurrentUser,
+    q: Annotated[str, Query(min_length=2, max_length=30, description='Часть username или имени')],
+) -> list[UserSearchItem]:
+    """Ищет пользователей по username/имени и отдаёт состояние связи с каждым."""
+
+    return await UserService.search(db=session, current_user=current_user, query=q)
 
 
 @router.get(

@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.core.config import settings
 from app.modules.auth.router import router as auth_router
+from app.modules.friends.router import router as friends_router
 from app.modules.users.router import router as users_router
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -40,6 +41,7 @@ templates = Jinja2Templates(directory=BASE_DIR / 'templates')
 # Подключение API роутеров модулей
 app.include_router(users_router, prefix='/api/v1')
 app.include_router(auth_router, prefix='/api/v1')
+app.include_router(friends_router, prefix='/api/v1')
 
 
 @app.get('/healthcheck', tags=['Health'])
